@@ -1,106 +1,90 @@
 ---
-- name: Set up LXD containers on Ubuntu 22.04 server
+- name: Set up LXD containers on Ubuntu 22.04.4 server
   hosts: vmserver
-  become: yes
   vars_files:
-    - host_vars/vmserver.yml
+      - host_vars/vmserver.yml
+  become: yes
 
   tasks:
     - name: Install snapd
-      apt:
+      ansible.builtin.apt:
         name: snapd
         state: present
 
     - name: Install LXD via snap
-      snap:
+      ansible.builtin.snap:
         name: lxd
         state: present
 
     - name: Add current user to LXD group
-      user:
+      ansible.builtin.user:
         name: "{{ ansible_user }}"
         groups: lxd
         append: yes
 
     - name: Initialize LXD
-      command: lxd init --auto
+      ansible.builtin.command: lxd init --auto
 
-    # Creating network bridge using nmcli
-    - name: Check for nmcli
-      command: which nmcli
-      register: nmcli_check
-      ignore_errors: yes
-
-    - name: Create first network bridge with nmcli
-      command: nmcli connection add type bridge con-name '{{ bridge1_name }}' ifname '{{ bridge1_name }}'
-      when: nmcli_check.rc == 0
-
-    - name: Set first network bridge IP address with nmcli
-      command: nmcli connection modify '{{ bridge1_name }}' ipv4.addresses '{{ bridge1_ip }}'
-      when: nmcli_check.rc == 0
-
-    - name: Bring up the first network bridge with nmcli
-      command: nmcli connection up '{{ bridge1_name }}'
-      when: nmcli_check.rc == 0
+    - name: Create a network bridge lxdbr0
+      ansible.builtin.command: lxc network create '{{ bridge_name }}'
+      args:
+        creates: /var/snap/lxd/common/lxd/networks/'{{ bridge_name }}'
 
     - name: Verify network bridge creation
-      command: lxc network ls
+      ansible.builtin.command: lxc network ls
       register: network_output
 
     - debug:
         var: network_output
 
-    # Creating storage pool if default is not present
     - name: Create storage pool named 'default'
-      command: lxc storage create default dir
+      ansible.builtin.command: lxc storage create default dir
       args:
         creates: /var/snap/lxd/common/lxd/storage-pools/default
 
     - name: Verify storage pool creation
-      command: lxc storage ls
+      ansible.builtin.command: lxc storage ls
       register: storage_output
 
     - debug:
         var: storage_output
-
-    # Creating a profile
-    - name: Check if LXD profile '{{ profile }}' exists
-      shell: lxc profile list --format csv | grep -q '^{{ profile }},'
-      register: profile_exists
+    - name: Delete existing '{{ profile_name }}' if it exists
+      ansible.builtin.command: lxc profile delete '{{ profile_name }}'
       ignore_errors: true
 
-    - name: Create LXD profile '{{ profile }}'
-      command: lxc profile copy default {{ profile }}
-      when: profile_exists.rc != 0
+    - name: Create LXD profile '{{ profile_name }}'
+      ansible.builtin.command: lxc profile copy default '{{ profile_name }}'
 
-    - name: Get current profile configuration
-      command: lxc profile show {{ profile }}
-      register: profile_config
-      changed_when: false
-
-    - name: Remove existing NIC device if it exists in '{{ profile }}'
-      command: lxc profile device remove {{ profile }} eth0
-      when: '"eth0:" in profile_config.stdout'
+    - name: Remove existing eth0 device from '{{ profile_name }}' if it exists
+      ansible.builtin.command: lxc profile device remove '{{ profile_name }}' eth0
       ignore_errors: true
 
-    - name: Configure '{{ profile }}' to use '{{ bridge1_name }}'
-      command: lxc profile device add {{ profile }} eth0 nic nictype=bridged parent={{ bridge1_name }}
-      when: '"eth0:" not in profile_config.stdout'
+    - name: Configure '{{ profile_name }}' to use lxdbr0
+      ansible.builtin.command: lxc profile device add '{{ profile_name }}' eth0 nic nictype=bridged parent=lxdbr0 name=eth0
+
+    - name: Remove existing disk device from '{{ profile_name }}' if it exists
+      ansible.builtin.command: lxc profile device remove '{{ profile_name }}' root
       ignore_errors: true
 
-   # - name: Remove existing disk device if it exists in '{{ profile }}'
-   #   command: lxc profile device remove {{ profile }} root
-   #   when: '"root:" in profile_config.stdout'
-   #   ignore_errors: true
+    - name: Add disk to '{{ profile_name }}'
+      ansible.builtin.command: lxc profile device add '{{ profile_name }}' root disk path=/ pool=default
 
-    #- name: Add disk to '{{ profile }}'
-     # command: lxc profile device add {{ profile }} root disk path=/ pool=default
-      #when: '"root:" not in profile_config.stdout'
-      #ignore_errors: true
+    - name: Initialize containers with '{{ profile_name }}'
+      ansible.builtin.command: lxc init ubuntu:22.04 -p '{{ profile_name }}' '{{ item }}'
+      loop: '{{ containers }}'
 
-    - name: Initialize containers
-      loop: "{{ containers }}"
-      command: lxc init ubuntu:22.04 -p '{{ item.profile }}' '{{ item.name }}'
-      loop_control:
-          loop_var: item
 
+    - name: Start container
+      ansible.builtin.command: lxc start '{{ item }}'
+      loop: '{{ containers }}'
+
+   # - name: Start container '{{ conatiner_name2 }}
+     # ansible.builtin.command: lxc start cont2
+
+
+    - name: Ensure all containers are running
+      ansible.builtin.command: lxc list
+      register: container_list
+
+    - debug:
+        var: container_list

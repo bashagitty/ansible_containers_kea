@@ -1,12 +1,6 @@
-bridge1_name: br2
-bridge1_ip: 192.168.3.1/24
-profile: cont-profile
+bridge_name: lxdbr1
+profile_name: host-profile
 containers:
-  - name: cont1
-    profile: cont-profile
-  - name: cont2
-    profile: cont-profile
-  - name: cont3
-    profile: cont-profile
-  - name: cont4
-    profile: cont-profile
+    - kea1
+    - kea2
+    - co1
