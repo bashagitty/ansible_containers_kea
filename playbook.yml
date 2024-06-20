@@ -88,9 +88,9 @@
       when: '"eth0:" not in profile_config.stdout'
       ignore_errors: true
 
-#    - name: Remove existing disk device if it exists in '{{ profile }}'
- #     command: lxc profile device remove {{ profile }} root
-  #    when: '"root:" in profile_config.stdout'
+   # - name: Remove existing disk device if it exists in '{{ profile }}'
+   #   command: lxc profile device remove {{ profile }} root
+   #   when: '"root:" in profile_config.stdout'
    #   ignore_errors: true
 
     #- name: Add disk to '{{ profile }}'
