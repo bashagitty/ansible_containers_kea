@@ -1,0 +1,65 @@
+---
+# tasks file for profile_and_containers_creation
+
+- name: Create a network bridge '{{ bridge_name2 }}'
+  ansible.builtin.command: lxc network create '{{ bridge_name2 }}'
+  args:
+    creates: /var/snap/lxd/common/lxd/networks/'{{ bridge_name2 }}'
+
+- name: Verify network bridge creation
+  ansible.builtin.command: lxc network ls
+  register: network_output
+
+- debug:
+    var: network_output
+
+#- name: Create storage pool named 'default'
+ # ansible.builtin.command: lxc storage create default dir
+ # args:
+  #  creates: /var/snap/lxd/common/lxd/storage-pools/default
+  #ignore_errors: true
+
+#- name: Verify storage pool creation
+ # ansible.builtin.command: lxc storage ls
+  #register: storage_output
+
+#- debug:
+ #   var: storage_output
+
+#- name: Ensure storage pool 'default' exists
+ # ansible.builtin.command: lxc storage create default dir
+ # when: "'default' not in storage_output.stdout"
+
+- name: Stop and delete existing containers
+  ansible.builtin.command: >
+    lxc stop '{{ item }}' || true && lxc delete '{{ item }}' || true
+  loop: "{{ containers2 }}"
+  ignore_errors: true
+
+- name: Delete existing '{{ profile_name2 }}' if it exists
+  ansible.builtin.command: lxc profile delete '{{ profile_name2 }}'
+  ignore_errors: true
+
+- name: Create LXD profile '{{ profile_name2 }}'
+  ansible.builtin.command: lxc profile copy default '{{ profile_name2 }}'
+
+- name: Remove existing eth0 device from '{{ profile_name2 }}' if it exists
+  ansible.builtin.command: lxc profile device remove '{{ profile_name2 }}' eth0
+  ignore_errors: true
+
+- name: Configure '{{ profile_name2 }}' to use '{{ bridge_name2 }}'
+  ansible.builtin.command: lxc profile device add '{{ profile_name2 }}' eth2 nic nictype=bridged parent={{ bridge_name }} name=eth2
+
+- name: Remove existing disk device from '{{ profile_name2 }}' if it exists
+  ansible.builtin.command: lxc profile device remove '{{ profile_name2 }}' root
+  ignore_errors: true
+
+- name: Add disk to '{{ profile_name2 }}'
+  ansible.builtin.command: lxc profile device add '{{ profile_name2 }}' root disk path=/ pool=default
+
+- name: Wait for LXD to be ready
+  ansible.builtin.command: sleep 10
+
+- name: Initialize containers with '{{ profile_name2 }}'
+  ansible.builtin.command: lxc init ubuntu:22.04 -p '{{ profile_name2 }}' '{{ item }}'
+  loop: '{{ containers2 }}'

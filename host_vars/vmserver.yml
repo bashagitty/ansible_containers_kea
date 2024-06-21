@@ -1,6 +1,12 @@
-bridge_name: lxdbr1
-profile_name: host-profile
+bridge_name: usnet0
+profile_name: kea-cont-profile
 containers:
-    - kea1
-    - kea2
-    - co1
+    - cont1
+    - cont2
+
+bridge_name2: hbnet0
+profile_name2: kea-ctrl-profile
+containers2:
+    - kea0a
+    - kea0b
+
